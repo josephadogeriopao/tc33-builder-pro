@@ -1,15 +1,73 @@
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import log from 'electron-log/renderer'
 import { AssessmentReport, AssessmentValues } from '../renderer/src/types/tc33'
-import { SheetRow } from '../shared/types'
 
-export function buildTc33Workbook(report: AssessmentReport, outputFileName = 'tc33.xlsx'): void {
-  const sheetRows: SheetRow[] = []
-
+export async function buildTc33Workbook(
+  report: AssessmentReport,
+  outputFileName = 'tc33.xlsx'
+): Promise<void> {
   log.info(`Building TC33 workbook... (Total groups: ${report.groups.size})`)
 
-  // 1. Exact Column Headers from valid file
-  sheetRows.push([
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('TC33 Report', {
+    views: [
+      {
+        state: 'frozen',
+        ySplit: 1
+      }
+    ],
+    pageSetup: {
+      paperSize: 9,
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printTitlesRow: '1:1',
+      margins: {
+        left: 0.5,
+        right: 0.5,
+        top: 1.0,
+        bottom: 0.75,
+        header: 0.3,
+        footer: 0.3
+      }
+    },
+    headerFooter: {
+      oddHeader:
+        '&L&"Aptos Narrow,Bold"&11&K000000' +
+        "ORLEANS PARISH ASSESSOR'S OFFICE\n" +
+        'TC-33 ACTIVE RECAP\n' +
+        'DISTRICT 1- TAX YEAR 2027'
+    }
+  })
+
+  // Column widths matching
+  worksheet.columns = [
+    { width: 34 }, // A: GROUP
+    { width: 42 }, // B: DESCRIPTION
+    { width: 8 },  // C: UNITS
+    { width: 15 }, // D: HOMESTEAD
+    { width: 16 }, // E: VETERAN_CREDIT
+    { width: 22 }, // F: FIRSTRESPONDER_CREDIT
+    { width: 18 }, // G: TOTAL ASSESED
+    { width: 18 }  // H: TAXABLE_VALUE
+  ]
+
+  const baseFont: Partial<ExcelJS.Font> = { name: 'Aptos Narrow', size: 11 }
+  const boldFont: Partial<ExcelJS.Font> = { name: 'Aptos Narrow', size: 11, bold: true }
+
+  const applyNumberFormat = (row: ExcelJS.Row): void => {
+    for (let col = 4; col <= 8; col++) {
+      const cell = row.getCell(col)
+      if (typeof cell.value === 'number') {
+        cell.numFmt = '#,##0'
+      }
+      cell.alignment = { horizontal: 'right' }
+    }
+  }
+
+  // 1. Header Row (Bold, no borders)
+  const headerRow = worksheet.addRow([
     'GROUP',
     'DESCRIPTION',
     'UNITS',
@@ -19,16 +77,22 @@ export function buildTc33Workbook(report: AssessmentReport, outputFileName = 'tc
     'TOTAL ASSESED',
     'TAXABLE_VALUE'
   ])
+  headerRow.eachCell((cell, colNumber) => {
+    cell.font = boldFont
+    cell.alignment = { horizontal: colNumber >= 4 ? 'right' : 'left' }
+  })
 
-  const blankRow: SheetRow = ['', '', '', '', '', '', '', '']
+  const addBlankRow = (): void => {
+    worksheet.addRow(['', '', '', '', '', '', '', ''])
+  }
 
-  // Helper to write a Group block with exact spacer rows
+  // 2. Helper to write each Group block
   const appendGroupBlock = (groupCode: string): void => {
     const group = report.groups.get(groupCode)
     if (!group) return
 
     group.items.forEach((item, index) => {
-      sheetRows.push([
+      const dataRow = worksheet.addRow([
         index === 0 ? group.rawGroupLabel : '',
         item.rawDescription,
         item.units ?? ' ',
@@ -38,14 +102,20 @@ export function buildTc33Workbook(report: AssessmentReport, outputFileName = 'tc
         item.totalAssessed,
         item.taxableValue
       ])
+
+      dataRow.font = baseFont
+      if (index === 0) {
+        dataRow.getCell(1).font = boldFont // Bold group label
+      }
+      applyNumberFormat(dataRow)
     })
 
-    // Blank spacer row BEFORE the <GROUP> TOTAL row
-    sheetRows.push([...blankRow])
+    // Blank spacer row before group total
+    addBlankRow()
 
-    // <GROUP> TOTAL row
+    // <GROUP> TOTAL Row (Bold only, no borders)
     const totals = group.sheetTotalRow ?? group.calculatedTotals
-    sheetRows.push([
+    const totalRow = worksheet.addRow([
       `${group.rawGroupLabel} TOTAL`,
       ' ',
       ' ',
@@ -56,11 +126,14 @@ export function buildTc33Workbook(report: AssessmentReport, outputFileName = 'tc
       totals.taxableValue
     ])
 
-    // Blank spacer row AFTER the <GROUP> TOTAL row
-    sheetRows.push([...blankRow])
+    totalRow.font = boldFont
+    applyNumberFormat(totalRow)
+
+    // Blank spacer row after group total
+    addBlankRow()
   }
 
-  // Helper to write a Cross-Group Summary row with blank credit columns
+  // 3. Helper to write Cross-Group Summary Rows (Bold only, no borders)
   const appendSummaryRow = (
     label: string,
     vals?: AssessmentValues,
@@ -68,7 +141,7 @@ export function buildTc33Workbook(report: AssessmentReport, outputFileName = 'tc
     addTrailingBlankRow = true
   ): void => {
     if (!vals) return
-    sheetRows.push([
+    const summaryRow = worksheet.addRow([
       '',
       label,
       '',
@@ -79,49 +152,41 @@ export function buildTc33Workbook(report: AssessmentReport, outputFileName = 'tc
       includeTaxable ? vals.taxableValue : ''
     ])
 
+    summaryRow.font = boldFont
+    applyNumberFormat(summaryRow)
+
     if (addTrailingBlankRow) {
-      sheetRows.push([...blankRow])
+      addBlankRow()
     }
   }
 
-  // 2. Active Real Estate & Personal Property (Groups 1, 2, 3)
+  // 4. Write Sections in Exact TC33 Order
   appendGroupBlock('1')
   appendGroupBlock('2')
   appendGroupBlock('3')
+  appendSummaryRow('TOTAL PERSONAL PROPERTY ', report.summaryRows.totalPersonalProperty, true, true)
 
-  // Summary row placed immediately after Group 3
-  appendSummaryRow('TOTAL PERSONAL PROPERTY', report.summaryRows.totalPersonalProperty, true, true)
-
-  // 3. Public Service (Group 4)
   appendGroupBlock('4')
-
-  // Summary row placed immediately after Group 4
   appendSummaryRow('TOTAL ACTIVE', report.summaryRows.totalActive, true, true)
 
-  // 4. Exempt Groups (Groups 6, 7, 8)
   appendGroupBlock('6')
   appendGroupBlock('7')
   appendGroupBlock('8')
-
-  // Summary row placed at the bottom after Group 8 (no taxable value, no extra trailing row)
   appendSummaryRow('TOTAL EXEMPT', report.summaryRows.totalExempt, false, false)
 
-  // 5. Create Worksheet, Set Column Widths, and Write tc33.xlsx
-  const worksheet = XLSX.utils.aoa_to_sheet(sheetRows)
-  worksheet['!cols'] = [
-    { wch: 34 }, // GROUP
-    { wch: 42 }, // DESCRIPTION
-    { wch: 8 },  // UNITS
-    { wch: 15 }, // HOMESTEAD
-    { wch: 16 }, // VETERAN_CREDIT
-    { wch: 22 }, // FIRSTRESPONDER_CREDIT
-    { wch: 18 }, // TOTAL ASSESED
-    { wch: 18 }  // TAXABLE_VALUE
-  ]
-
-  const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'TC33 Report')
-  XLSX.writeFile(workbook, outputFileName)
+  // 5. Generate Buffer and Download tc33.xlsx
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = outputFileName
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 
   log.info(`Successfully exported ${outputFileName}`)
 }

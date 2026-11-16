@@ -56,13 +56,11 @@ export async function runValidationPipeline(
 
 export async function runBuildPipeline(
   report: AssessmentReport,
-  sourceFileName: string
+  sourceFileName: string,
+  isBlockBorder = true
 ): Promise<string> {
   const outputFileName = 'tc33.xlsx'
-  console.log(`Building ${outputFileName} from report:`, report)
-
-  // Step 3: Load validated AssessmentReport into the formatted tc33.xlsx file
-  buildTc33Workbook(report, outputFileName)
-
-  return `Success! Exported "${outputFileName}" from "${sourceFileName}" (${report.groups.size} groups) with custom print headers.`
+  await buildTc33Workbook(report)
+  return `Success! Exported "${outputFileName}" from "${sourceFileName}" (${report.groups.size} groups) with bold text and thick block borders.`
 }
+
