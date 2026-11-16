@@ -13,12 +13,17 @@ export interface TransformResult {
   errors: string[]
 }
 
-function toNullableNumber(val: CellValue): number | null {
+function toNullableNumber(val: CellValue): number | string | null {
   if (val === null || val === undefined) return null
   const str = String(val).trim()
   if (str === '') return null
   const num = Number(str.replace(/,/g, ''))
-  return Number.isNaN(num) ? null : num
+  if (Number.isNaN(num)) return null
+  return num === 0 ? getDashValue() : num
+}
+
+function getDashValue(): string {
+  return "-";
 }
 
 function createEmptyValues(): AssessmentValues {

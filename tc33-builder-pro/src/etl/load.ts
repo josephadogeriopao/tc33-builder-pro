@@ -46,10 +46,10 @@ export async function buildTc33Workbook(
     { width: 34 }, // A: GROUP
     { width: 42 }, // B: DESCRIPTION
     { width: 8 },  // C: UNITS
-    { width: 15 }, // D: HOMESTEAD
+    { width: 15 }, // D: HOMESTEAD_CREDIT
     { width: 16 }, // E: VETERAN_CREDIT
     { width: 22 }, // F: FIRSTRESPONDER_CREDIT
-    { width: 18 }, // G: TOTAL ASSESED
+    { width: 18 }, // G: TOTAL ASSESSED
     { width: 18 }  // H: TAXABLE_VALUE
   ]
 
