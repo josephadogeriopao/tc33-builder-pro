@@ -1,51 +1,96 @@
 import React, { useState } from 'react'
+import { extractJsonSchema, extractXlsxFile } from '../../etl/extract'
+import { runBuildPipeline, runValidationPipeline } from '../../etl/pipeline'
+import { transform } from '../../etl/transform'
+import { AssessmentReport } from './types/tc33'
 import './App.css'
 
 function App(): React.JSX.Element {
   const [xlsxFile, setXlsxFile] = useState<File | null>(null)
   const [jsonFile, setJsonFile] = useState<File | null>(null)
+  const [jsonSchema, setJsonSchema] = useState<Record<string, unknown> | null>(null)
+  const [report, setReport] = useState<AssessmentReport | null>(null)
   const [statusLog, setStatusLog] = useState<string>(
-    'Ready. Select a source .xlsx file and a .json schema to begin.'
+    'Ready. Select a source .xlsx file to parse rows and enable Generate TC33 .xlsx.'
   )
-  const [isValidated, setIsValidated] = useState<boolean>(false)
+  const [isGenerating, setIsGenerating] = useState<boolean>(false)
 
-  const handleXlsxChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    const file = e.target.files?.[0] || null
+  const handleXlsxChange = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = e.target.files?.item(0) || null
     setXlsxFile(file)
-    setIsValidated(false)
-    if (file) {
-      setStatusLog(`Loaded Excel source: ${file.name}`)
+    setReport(null)
+
+    if (!file) return
+
+    setStatusLog(`Reading "${file.name}"...\n`)
+
+    try {
+      const extracted = await extractXlsxFile(file)
+      const transformed = transform(extracted.rows)
+
+      setReport(transformed.report)
+      console.log(extracted.formattedLog)
+
+      if (transformed.errors.length > 0) {
+        setStatusLog(
+          `${extracted.formattedLog}\n\nWarnings:\n${transformed.errors.join('\n')}`
+        )
+      } else {
+        setStatusLog(
+          `${extracted.formattedLog}\n\nParsed ${transformed.report.groups.size} groups. Ready to Generate TC33 .xlsx!`
+        )
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      setStatusLog(`Error reading Excel file: ${errorMessage}`)
     }
   }
 
-  const handleJsonChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    const file = e.target.files?.[0] || null
+  const handleJsonChange = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = e.target.files?.item(0) || null
     setJsonFile(file)
-    setIsValidated(false)
-    if (file) {
-      setStatusLog(`Loaded JSON rules: ${file.name}`)
+    setJsonSchema(null)
+
+    if (!file) return
+
+    try {
+      const parsedSchema = await extractJsonSchema(file)
+      setJsonSchema(parsedSchema)
+      setStatusLog((prev) => `${prev}\n\nLoaded JSON rules: ${file.name}`)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      setStatusLog((prev) => `${prev}\n\nError reading JSON file: ${errorMessage}`)
     }
   }
 
   const handleValidate = async (): Promise<void> => {
-    if (!xlsxFile || !jsonFile) return
-    setStatusLog('Comparing .xlsx rows against JSON validation schema...')
+    if (!xlsxFile || !jsonFile || !jsonSchema) return
+    setStatusLog(`Running validation pipeline on "${xlsxFile.name}"...`)
 
-    // TODO: Connect to window.electron.ipcRenderer.invoke('validate-c33', ...)
-    setTimeout(() => {
-      setIsValidated(true)
-      setStatusLog(`Validation passed! All rows in "${xlsxFile.name}" match "${jsonFile.name}".`)
-    }, 500)
+    try {
+      const result = await runValidationPipeline(xlsxFile, jsonFile)
+      setReport(result.report)
+      setStatusLog(result.summaryLog)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      setStatusLog(`Validation error: ${errorMessage}`)
+    }
   }
 
-  const handleGenerate = async (): Promise<void> => {
-    if (!xlsxFile) return
-    setStatusLog('Generating print-ready C33 .xlsx document...')
+  const handleGenerateFile = async (): Promise<void> => {
+    if (!xlsxFile || !report) return
+    setIsGenerating(true)
+    setStatusLog('Generating print-ready tc33.xlsx file...')
 
-    // TODO: Connect to window.electron.ipcRenderer.invoke('generate-c33', ...)
-    setTimeout(() => {
-      setStatusLog('Success! C33 .xlsx file generated with custom print headers.')
-    }, 500)
+    try {
+      const buildMessage = await runBuildPipeline(report, xlsxFile.name)
+      setStatusLog((prev) => `${prev}\n\n${buildMessage}`)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      setStatusLog(`Error generating file: ${errorMessage}`)
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   return (
@@ -86,24 +131,32 @@ function App(): React.JSX.Element {
 
       <div className="actions-bar">
         <button
+          type="button"
           className="btn btn-secondary"
-          disabled={!xlsxFile || !jsonFile}
+          disabled={!xlsxFile || !jsonSchema || isGenerating}
           onClick={handleValidate}
         >
           Validate Data
         </button>
+
         <button
+          type="button"
           className="btn btn-primary"
-          disabled={!xlsxFile || !isValidated}
-          onClick={handleGenerate}
+          disabled={!xlsxFile || !report || isGenerating}
+          onClick={handleGenerateFile}
         >
-          Build C33 .xlsx
+          {isGenerating ? 'Generating File...' : 'Generate TC33 .xlsx'}
         </button>
       </div>
 
       <section className="card status-panel">
         <h3>Validation & Build Output</h3>
-        <div className="status-box">{statusLog}</div>
+        <div
+          className="status-box"
+          style={{ whiteSpace: 'pre-wrap', maxHeight: '320px', overflowY: 'auto' }}
+        >
+          {statusLog}
+        </div>
       </section>
     </div>
   )

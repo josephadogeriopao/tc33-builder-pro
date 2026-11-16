@@ -1,8 +1,8 @@
 {
-  "name": "electron-app",
+  "name": "tc33-builder-pro",
   "version": "1.0.0",
   "main": "./out/main/index.js",
-  "description": "Electron-vite application for generating vital records report",
+  "description": "Generates TC33 documents and validates raw data using Electron-vite application",
   "private": true,
   "author": "Joseph Adogeri <joseph.adogeri@orleansassessors.com>",
   "scripts": {
@@ -14,11 +14,17 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
+    "electron-log": "^5.4.0",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.8.11",
     "file-saver": "^2.0.5",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
     "react-csv": "^2.2.2",
     "react-drag-drop-files": "^3.1.0",
     "react-router-dom": "^7.18.5",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/file-saver": "^2.0.7",
@@ -37,7 +43,7 @@
   },
   "build": {
     "appId": "com.josephadogeri.electronapp",
-    "productName": "Electron App",
+    "productName": "TC33 Builder Pro",
     "directories": {
       "output": "dist"
     },

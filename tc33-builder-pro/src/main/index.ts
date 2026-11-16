@@ -1,50 +1,46 @@
-import { app, BrowserWindow, ipcMain, screen } from 'electron'
-import { join } from 'node:path'
-import { is } from '@electron-toolkit/utils'
+import { app, BrowserWindow, nativeTheme } from 'electron'
+import { electronApp } from '@electron-toolkit/utils'
+import { createMainWindow } from './window'
+import { registerIPC } from './ipc'
+import { registerAppMenu } from './menu'
+import { registerUpdater } from './updater'
+import { getSettings } from './settings'
+import { registerLogger } from './logger'
 
-function createWindow(): void {
-  const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
 
-  const mainWindow = new BrowserWindow({
-    width: Math.min(1000, screenWidth),
-    height: Math.min(800, screenHeight),
-    minWidth: 600,
-    minHeight: 500,
-    maxWidth: screenWidth / 1.5,
-    maxHeight: screenHeight,
-    center: true,
-    // Set resizable: false if you want to lock the window size like your old version
-    resizable: true,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
-  })
-
-  // Load Vite dev server in dev, or built HTML file in production
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    mainWindow.center()
-    mainWindow.webContents.openDevTools()
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+function initWindow(): void {
+  const mainWindow = createMainWindow()
+  registerAppMenu(mainWindow)
+  registerUpdater(mainWindow)
 }
 
-app.whenReady().then(() => {
-  ipcMain.handle('get-app-version', () => app.getVersion())
-
-  createWindow()
-
-  // Re-create window on macOS when dock icon is clicked
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+const hasLock = app.requestSingleInstanceLock()
+if (!hasLock) {
+  app.quit()
+} else {
+  registerLogger()
+  app.on('second-instance', () => {
+    const window = BrowserWindow.getAllWindows()[0]
+    if (!window) {
+      if (app.isReady()) initWindow()
+      return
     }
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.focus()
   })
-})
 
-// Quit app when all windows are closed (except on macOS)
+  app.whenReady().then(() => {
+    electronApp.setAppUserModelId('com.josephadogeridev.electronapp')
+    nativeTheme.themeSource = getSettings().theme
+    registerIPC()
+    initWindow()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) initWindow()
+    })
+  })
+}
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
