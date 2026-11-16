@@ -1,0 +1,29 @@
+
+1. AssessmentValues
+
+This base structure holds the five numeric dollar columns (HOMESTEAD, VETERAN_CREDIT, FIRSTRESPONDER_CREDIT, TOTAL ASSESED, TAXABLE_VALUE) used on every data row and total row.
+• homestead (number): Dollar amount exempted under the Homestead Exemption (HOMESTEAD column). Example from row 1: 117800.
+• veteranCredit (number): Dollar amount exempted for qualifying veterans (VETERAN_CREDIT column). Example from row 1: 152820.
+• firstResponderCredit (number): Dollar amount exempted for qualifying first responders (FIRSTRESPONDER_CREDIT column). Example from row 1: 0. (Blank cells in Personal Property rows parse to 0).
+• totalAssessed (number): Total assessed property value before exemptions are subtracted (TOTAL ASSESED column). Example from row 1: 28718470.
+• taxableValue (number): Net assessed value subject to tax after credits/exemptions (TAXABLE_VALUE column). Example from row 1: 28447850.
+
+2. PropertyClassItem (extends AssessmentValues)
+
+Represents a single property sub-class row inside a group, inheriting all five numeric fields above plus its label metadata.
+• classCode (string): The two-digit sub-class code parsed from the start of DESCRIPTION. Example: "34".
+• className (string): The cleaned text label parsed from DESCRIPTION after the code. Example: "SUBDIVISION LOTS".
+• rawDescription (string): The exact, unedited string from the DESCRIPTION column for auditing. Example: "34 SUBDIVISION LOTS ".
+• units (string, optional): Value from the UNITS column. Example: "" or undefined (currently blank across all rows in your CSV).
+Sample PropertyClassItem object (Row 1):
+json
+
+3. PropertyGroup
+
+Represents one full tax category block (such as 1REAL ESTATE or 2PERSONAL PROPERTY -SECTION A), bundling all of its sub-classes together with its rollup totals.
+• groupCode (string): Leading digit extracted from the GROUP column. Example: "1".
+• groupName (string): Cleaned category name extracted from the GROUP column. Example: "REAL ESTATE".
+• rawGroupLabel (string): Exact string from the first row of the group in the CSV. Example: "1REAL ESTATE".
+• items (PropertyClassItem[]): Ordered array of every sub-class row belonging to this group (e.g., classes "34", "36", "40", and "45").
+• sheetTotalRow (AssessmentValues, optional): The numbers read directly from the "1REAL ESTATE TOTAL" row in the CSV. Example totalAssessed: 957279570.
+• calculatedTotals (AssessmentValues): The sum of all items calculated in TypeScript, used to verify that sheetTotalRow matches the underlying rows. Example totalAssessed: 957279570.
