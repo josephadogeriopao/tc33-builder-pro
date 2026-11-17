@@ -18,6 +18,36 @@ export async function extractXlsxFile(file: File): Promise<ExtractedSheet> {
     defval: ''
   })
 
+  // Scan all tabs in the workbook for the SQL query
+  let sqlScript = ''
+  for (const name of workbook.SheetNames) {
+    const candidateSheet = workbook.Sheets[name]
+    const sheetRows = XLSX.utils.sheet_to_json<SheetRow>(candidateSheet, {
+      header: 1,
+      defval: ''
+    })
+
+    const isSqlTab =
+      name.trim().toUpperCase().includes('SQL') ||
+      (name !== sheetName &&
+        sheetRows.some((r) =>
+          r.some((cell) => /SELECT\s+[\s\S]*TROLL_AVALUE/i.test(String(cell)))
+        ))
+
+    if (isSqlTab) {
+      sqlScript = sheetRows
+        .map((r) =>
+          r
+            .map((cell) => (cell === null || cell === undefined ? '' : String(cell)))
+            .join(' ')
+            .trimEnd()
+        )
+        .join('\n')
+        .trim()
+      break
+    }
+  }
+
   const outputLines: string[] = [
     `Loaded: ${file.name} | Sheet: ${sheetName} (${rows.length} rows)`,
     '----------------------------------------'
@@ -35,6 +65,7 @@ export async function extractXlsxFile(file: File): Promise<ExtractedSheet> {
     fileName: file.name,
     sheetName,
     rows,
+    sqlScript,
     formattedLog: outputLines.join('\n')
   }
 }

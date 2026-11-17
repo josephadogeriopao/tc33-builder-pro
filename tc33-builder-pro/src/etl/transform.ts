@@ -2,15 +2,19 @@ import {
   AssessmentReport,
   AssessmentValues,
   PropertyClassItem,
-  PropertyGroup
+  PropertyGroup,
+  PsrJsonPayload
 } from '../renderer/src/types/tc33'
 import { CellValue, SheetRow } from '../shared/types'
-import log from 'electron-log/renderer'
 
 export interface TransformResult {
   isValid: boolean
   report: AssessmentReport
   errors: string[]
+}
+
+function getDashValue(): string {
+  return '-'
 }
 
 function toNullableNumber(val: CellValue): number | string | null {
@@ -20,10 +24,6 @@ function toNullableNumber(val: CellValue): number | string | null {
   const num = Number(str.replace(/,/g, ''))
   if (Number.isNaN(num)) return null
   return num === 0 ? getDashValue() : num
-}
-
-function getDashValue(): string {
-  return "-";
 }
 
 function createEmptyValues(): AssessmentValues {
@@ -38,12 +38,21 @@ function createEmptyValues(): AssessmentValues {
 
 function addAssessmentValues(target: AssessmentValues, source?: AssessmentValues): void {
   if (!source) return
-  target.homesteadCredit = (target.homesteadCredit ?? 0) + (source.homesteadCredit ?? 0)
-  target.veteranCredit = (target.veteranCredit ?? 0) + (source.veteranCredit ?? 0)
+  target.homesteadCredit =
+    (typeof target.homesteadCredit === 'number' ? target.homesteadCredit : 0) +
+    (typeof source.homesteadCredit === 'number' ? source.homesteadCredit : 0)
+  target.veteranCredit =
+    (typeof target.veteranCredit === 'number' ? target.veteranCredit : 0) +
+    (typeof source.veteranCredit === 'number' ? source.veteranCredit : 0)
   target.firstResponderCredit =
-    (target.firstResponderCredit ?? 0) + (source.firstResponderCredit ?? 0)
-  target.totalAssessed = (target.totalAssessed ?? 0) + (source.totalAssessed ?? 0)
-  target.taxableValue = (target.taxableValue ?? 0) + (source.taxableValue ?? 0)
+    (typeof target.firstResponderCredit === 'number' ? target.firstResponderCredit : 0) +
+    (typeof source.firstResponderCredit === 'number' ? source.firstResponderCredit : 0)
+  target.totalAssessed =
+    (typeof target.totalAssessed === 'number' ? target.totalAssessed : 0) +
+    (typeof source.totalAssessed === 'number' ? source.totalAssessed : 0)
+  target.taxableValue =
+    (typeof target.taxableValue === 'number' ? target.taxableValue : 0) +
+    (typeof source.taxableValue === 'number' ? source.taxableValue : 0)
 }
 
 function parseAssessmentValues(row: SheetRow): AssessmentValues {
@@ -72,7 +81,7 @@ function parseGroupLabel(rawGroup: string): { groupCode: string; groupName: stri
 
 function parseDescription(rawDesc: string): { classCode: string; className: string } {
   const trimmed = rawDesc.trim()
-  log.info(`Parsing description: ${trimmed}`)
+  //log.info(`Parsing description: ${trimmed}`)
   const match = trimmed.match(/^(\d+)\s+(.+)$/)
   if (match) {
     return {
@@ -86,14 +95,39 @@ function parseDescription(rawDesc: string): { classCode: string; className: stri
   }
 }
 
-export function transform(extractedRows: SheetRow[]): TransformResult {
+function parseSqlMetadata(sqlScript?: string): {
+  district?: string
+  taxYear?: string
+} {
+  if (!sqlScript) return {}
+
+  // Ignore single-line SQL comments so commented-out years or FIPS codes are skipped
+  const activeLines = sqlScript
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n')
+
+  // Matches TAX_YEAR = '2027' or TAX_YEAR = 2027
+  const taxYearMatch = activeLines.match(/TAX_YEAR\s*=\s*'?(\d{4})'?/i)
+  // Matches FIPS_CODE = '22171' or FIPS_CODE = 22171
+  const fipsMatch = activeLines.match(/FIPS_CODE\s*=\s*'?(\d+)'?/i)
+
+  const taxYear = taxYearMatch ? taxYearMatch[1] : undefined
+  const fipsCode = fipsMatch ? fipsMatch[1] : undefined
+  const district = fipsCode ? fipsCode.slice(-1) : undefined
+
+  return { district, taxYear }
+}
+
+export function transform(extractedRows: SheetRow[], sqlScript?: string): TransformResult {
   const groups = new Map<string, PropertyGroup>()
   const errors: string[] = []
+  const { district, taxYear } = parseSqlMetadata(sqlScript)
 
   if (extractedRows.length < 2) {
     return {
       isValid: false,
-      report: { groups, summaryRows: {} },
+      report: { groups, summaryRows: {}, district, taxYear, sqlScript },
       errors: ['Spreadsheet has no data rows.']
     }
   }
@@ -217,8 +251,68 @@ export function transform(extractedRows: SheetRow[]): TransformResult {
     isValid: errors.length === 0 && groups.size > 0,
     report: {
       groups,
-      summaryRows
+      summaryRows,
+      district,
+      taxYear,
+      sqlScript
     },
     errors
+  }
+}
+
+function mapClassToGroupCode(classCode: string): string {
+  const num = Number(classCode)
+  if (num >= 30 && num <= 49) return '1' // Real Estate
+  if (num >= 50 && num <= 59) return '2' // Personal Property - Section A
+  if (num >= 60 && num <= 69) return '3' // Personal Property - Section B
+  if (num >= 80 && num <= 89) return '4' // Public Service
+  return ''
+}
+
+export function mapPsrJsonToAssessmentReport(payload: PsrJsonPayload): AssessmentReport {
+  const groups = new Map<string, PropertyGroup>()
+  const parish = payload.PSR?.ParishInformation?.[0]
+
+  const district = parish?.ParishFipsCode ? parish.ParishFipsCode.slice(-1) : undefined
+  const taxYear = parish?.TaxYear ? String(parish.TaxYear) : undefined
+
+  for (const item of payload.PSR?.ActiveRecap ?? []) {
+    const groupCode = mapClassToGroupCode(item.Class)
+    if (!groupCode) continue
+
+    if (!groups.has(groupCode)) {
+      groups.set(groupCode, {
+        groupCode,
+        groupName: '',
+        rawGroupLabel: groupCode,
+        items: [],
+        calculatedTotals: {
+          homesteadCredit: 0,
+          veteranCredit: 0,
+          firstResponderCredit: 0,
+          totalAssessed: 0,
+          taxableValue: 0
+        }
+      })
+    }
+
+    const group = groups.get(groupCode)!
+    group.items.push({
+      classCode: item.Class,
+      className: item.PropertyDescription,
+      rawDescription: `${item.Class} ${item.PropertyDescription}`,
+      homesteadCredit: item.HomesteadCredit,
+      veteranCredit: item.DisabledVeteranCredit,
+      firstResponderCredit: item.FirstResponderCredit,
+      totalAssessed: item.AssessedValue,
+      taxableValue: item.TaxableValue
+    })
+  }
+
+  return {
+    groups,
+    summaryRows: {},
+    district,
+    taxYear
   }
 }

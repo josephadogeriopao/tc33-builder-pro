@@ -10,6 +10,8 @@ function App(): React.JSX.Element {
   const [jsonFile, setJsonFile] = useState<File | null>(null)
   const [jsonSchema, setJsonSchema] = useState<Record<string, unknown> | null>(null)
   const [report, setReport] = useState<AssessmentReport | null>(null)
+  const [district, setDistrict] = useState<string>('')
+  const [taxYear, setTaxYear] = useState<string>('')
   const [statusLog, setStatusLog] = useState<string>(
     'Ready. Select a source .xlsx file to parse rows and enable Generate TC33 .xlsx.'
   )
@@ -19,6 +21,8 @@ function App(): React.JSX.Element {
     const file = e.target.files?.item(0) || null
     setXlsxFile(file)
     setReport(null)
+    setDistrict('')
+    setTaxYear('')
 
     if (!file) return
 
@@ -26,18 +30,29 @@ function App(): React.JSX.Element {
 
     try {
       const extracted = await extractXlsxFile(file)
-      const transformed = transform(extracted.rows)
+      // Pass extracted.sqlScript so transform extracts district and taxYear
+      const transformed = transform(extracted.rows, extracted.sqlScript)
+
+      const detectedDistrict = transformed.report.district ?? ''
+      const detectedTaxYear = transformed.report.taxYear ?? ''
 
       setReport(transformed.report)
+      setDistrict(detectedDistrict)
+      setTaxYear(detectedTaxYear)
       console.log(extracted.formattedLog)
+
+      const metaNote =
+        detectedDistrict && detectedTaxYear
+          ? `Auto-filled District ${detectedDistrict} and Tax Year ${detectedTaxYear} from SQL tab.`
+          : 'SQL metadata not found—please enter District and Tax Year manually.'
 
       if (transformed.errors.length > 0) {
         setStatusLog(
-          `${extracted.formattedLog}\n\nWarnings:\n${transformed.errors.join('\n')}`
+          `${extracted.formattedLog}\n\n${metaNote}\n\nWarnings:\n${transformed.errors.join('\n')}`
         )
       } else {
         setStatusLog(
-          `${extracted.formattedLog}\n\nParsed ${transformed.report.groups.size} groups. Ready to Generate TC33 .xlsx!`
+          `${extracted.formattedLog}\n\nParsed ${transformed.report.groups.size} groups. ${metaNote}`
         )
       }
     } catch (err) {
@@ -70,6 +85,8 @@ function App(): React.JSX.Element {
     try {
       const result = await runValidationPipeline(xlsxFile, jsonFile)
       setReport(result.report)
+      setDistrict((prev) => prev || result.report.district || '')
+      setTaxYear((prev) => prev || result.report.taxYear || '')
       setStatusLog(result.summaryLog)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
@@ -78,12 +95,18 @@ function App(): React.JSX.Element {
   }
 
   const handleGenerateFile = async (): Promise<void> => {
-    if (!xlsxFile || !report) return
+    if (!xlsxFile || !report || !district.trim() || !taxYear.trim()) return
     setIsGenerating(true)
     setStatusLog('Generating print-ready tc33.xlsx file...')
 
     try {
-      const buildMessage = await runBuildPipeline(report, xlsxFile.name)
+      const reportWithHeader: AssessmentReport = {
+        ...report,
+        district: district.trim(),
+        taxYear: taxYear.trim()
+      }
+
+      const buildMessage = await runBuildPipeline(reportWithHeader, xlsxFile.name)
       setStatusLog((prev) => `${prev}\n\n${buildMessage}`)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
@@ -92,6 +115,8 @@ function App(): React.JSX.Element {
       setIsGenerating(false)
     }
   }
+
+  const isMetadataMissing = !district.trim() || !taxYear.trim()
 
   return (
     <div className="app-container">
@@ -127,6 +152,39 @@ function App(): React.JSX.Element {
           />
           {jsonFile && <span className="file-name">Selected: {jsonFile.name}</span>}
         </section>
+
+        <section className="card upload-card">
+          <h3>3. Report Header Info (Required)</h3>
+          <p>Auto-filled from the SQL tab if present, or enter manually.</p>
+          <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+            <label style={{ flex: 1 }}>
+              <span style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>
+                District *
+              </span>
+              <input
+                type="text"
+                value={district}
+                onChange={(e) => setDistrict(e.target.value)}
+                placeholder="e.g. 1"
+                className="file-input"
+                required
+              />
+            </label>
+            <label style={{ flex: 1 }}>
+              <span style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>
+                Tax Year *
+              </span>
+              <input
+                type="text"
+                value={taxYear}
+                onChange={(e) => setTaxYear(e.target.value)}
+                placeholder="e.g. 2027"
+                className="file-input"
+                required
+              />
+            </label>
+          </div>
+        </section>
       </main>
 
       <div className="actions-bar">
@@ -142,7 +200,7 @@ function App(): React.JSX.Element {
         <button
           type="button"
           className="btn btn-primary"
-          disabled={!xlsxFile || !report || isGenerating}
+          disabled={!xlsxFile || !report || isMetadataMissing || isGenerating}
           onClick={handleGenerateFile}
         >
           {isGenerating ? 'Generating File...' : 'Generate TC33 .xlsx'}

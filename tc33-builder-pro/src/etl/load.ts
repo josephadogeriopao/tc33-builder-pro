@@ -2,11 +2,28 @@ import ExcelJS from 'exceljs'
 import log from 'electron-log/renderer'
 import { AssessmentReport, AssessmentValues } from '../renderer/src/types/tc33'
 
+export interface WorkbookHeaderOptions {
+  district?: string
+  taxYear?: string
+}
+
 export async function buildTc33Workbook(
   report: AssessmentReport,
-  outputFileName = 'tc33.xlsx'
+  outputFileName = 'tc33.xlsx',
+  headerOptions?: WorkbookHeaderOptions
 ): Promise<void> {
-  log.info(`Building TC33 workbook... (Total groups: ${report.groups.size})`)
+  // Resolve from user input or SQL-parsed metadata (no hardcoded defaults)
+  const district = (headerOptions?.district ?? report.district ?? '').trim()
+  const taxYear = (headerOptions?.taxYear ?? report.taxYear ?? '').trim()
+
+  if (!district || !taxYear) {
+    const missing: string[] = []
+    if (!district) missing.push('District')
+    if (!taxYear) missing.push('Tax Year')
+    throw new Error(`Missing required report metadata: ${missing.join(' and ')}. Please enter them before exporting.`)
+  }
+
+  log.info(`Building TC33 workbook for District ${district}, Tax Year ${taxYear}... (Total groups: ${report.groups.size})`)
 
   const workbook = new ExcelJS.Workbook()
   const worksheet = workbook.addWorksheet('TC33 Report', {
@@ -34,10 +51,9 @@ export async function buildTc33Workbook(
     },
     headerFooter: {
       oddHeader:
-        '&L&"Aptos Narrow,Bold"&11&K000000' +
-        "ORLEANS PARISH ASSESSOR'S OFFICE\n" +
-        'TC-33 ACTIVE RECAP\n' +
-        'DISTRICT 1- TAX YEAR 2027'
+        '&L&"Aptos Narrow,Bold"&11&K000000ORLEANS PARISH ASSESSOR\'S OFFICE\n' +
+        '&"Aptos Narrow,Bold"&11&K000000TC-33 ACTIVE RECAP\n' +
+        `&"Aptos Narrow,Bold"&11&K000000DISTRICT ${district}- TAX YEAR ${taxYear}`
     }
   })
 
@@ -66,6 +82,27 @@ export async function buildTc33Workbook(
     }
   }
 
+  // Helper to apply a bold box border only around non-zero, non-dash value cells
+  const applyValueBlockBorder = (row: ExcelJS.Row, startCol = 4, endCol = 8): void => {
+    const borderStyle: Partial<ExcelJS.Border> = { style: 'medium', color: { argb: 'FF000000' } }
+
+    for (let col = startCol; col <= endCol; col++) {
+      const cell = row.getCell(col)
+      const val = cell.value
+
+      if (val === null || val === undefined) continue
+      const strVal = String(val).trim()
+      if (strVal === '' || strVal === '-') continue
+
+      cell.border = {
+        top: borderStyle,
+        bottom: borderStyle,
+        left: borderStyle,
+        right: borderStyle
+      }
+    }
+  }
+
   // 1. Header Row (Bold, no borders)
   const headerRow = worksheet.addRow([
     'GROUP',
@@ -87,7 +124,7 @@ export async function buildTc33Workbook(
   }
 
   // 2. Helper to write each Group block
-  const appendGroupBlock = (groupCode: string): void => {
+  const appendGroupBlock = (groupCode: string, hasBlockBorder = false): void => {
     const group = report.groups.get(groupCode)
     if (!group) return
 
@@ -113,7 +150,7 @@ export async function buildTc33Workbook(
     // Blank spacer row before group total
     addBlankRow()
 
-    // <GROUP> TOTAL Row (Bold only, no borders)
+    // <GROUP> TOTAL Row (Bold only, optional value block border)
     const totals = group.sheetTotalRow ?? group.calculatedTotals
     const totalRow = worksheet.addRow([
       `${group.rawGroupLabel} TOTAL`,
@@ -129,16 +166,21 @@ export async function buildTc33Workbook(
     totalRow.font = boldFont
     applyNumberFormat(totalRow)
 
+    if (hasBlockBorder) {
+      applyValueBlockBorder(totalRow)
+    }
+
     // Blank spacer row after group total
     addBlankRow()
   }
 
-  // 3. Helper to write Cross-Group Summary Rows (Bold only, no borders)
+  // 3. Helper to write Cross-Group Summary Rows
   const appendSummaryRow = (
     label: string,
     vals?: AssessmentValues,
     includeTaxable = true,
-    addTrailingBlankRow = true
+    addTrailingBlankRow = true,
+    hasBlockBorder = true
   ): void => {
     if (!vals) return
     const summaryRow = worksheet.addRow([
@@ -155,26 +197,41 @@ export async function buildTc33Workbook(
     summaryRow.font = boldFont
     applyNumberFormat(summaryRow)
 
+    if (hasBlockBorder) {
+      applyValueBlockBorder(summaryRow)
+    }
+
     if (addTrailingBlankRow) {
       addBlankRow()
     }
   }
 
   // 4. Write Sections in Exact TC33 Order
-  appendGroupBlock('1')
+  appendGroupBlock('1', true) // 1REAL ESTATE TOTAL -> value borders
   appendGroupBlock('2')
   appendGroupBlock('3')
-  appendSummaryRow('TOTAL PERSONAL PROPERTY ', report.summaryRows.totalPersonalProperty, true, true)
+  appendSummaryRow('TOTAL PERSONAL PROPERTY ', report.summaryRows.totalPersonalProperty, true, true, true)
 
-  appendGroupBlock('4')
-  appendSummaryRow('TOTAL ACTIVE', report.summaryRows.totalActive, true, true)
+  appendGroupBlock('4', true) // 4PUBLIC SERVICE TOTAL -> value borders
+  appendSummaryRow('TOTAL ACTIVE', report.summaryRows.totalActive, true, true, true)
 
   appendGroupBlock('6')
-  appendGroupBlock('7')
-  appendGroupBlock('8')
-  appendSummaryRow('TOTAL EXEMPT', report.summaryRows.totalExempt, false, false)
+  appendGroupBlock('7', true) // 7EXEMPT - PERSONAL PROPERTY TOTAL -> value borders
+  appendGroupBlock('8', true) // 8EXEMPT TOTAL -> value borders
+  appendSummaryRow('TOTAL EXEMPT', report.summaryRows.totalExempt, false, false, true)
 
-  // 5. Generate Buffer and Download tc33.xlsx
+  // 5. Append SQL Tab from Input File if Present
+  if (report.sqlScript) {
+    const sqlSheet = workbook.addWorksheet('SQL')
+    sqlSheet.columns = [{ width: 120 }]
+
+    report.sqlScript.split(/\r?\n/).forEach((line) => {
+      const row = sqlSheet.addRow([line])
+      row.font = { name: 'Consolas', size: 10 }
+    })
+  }
+
+  // 6. Generate Buffer and Download tc33.xlsx
   const buffer = await workbook.xlsx.writeBuffer()
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

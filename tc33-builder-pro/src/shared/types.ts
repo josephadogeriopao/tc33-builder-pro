@@ -41,5 +41,6 @@ export interface ExtractedSheet {
   fileName: string
   sheetName: string
   rows: SheetRow[]
+  sqlScript?: string
   formattedLog: string
 }
