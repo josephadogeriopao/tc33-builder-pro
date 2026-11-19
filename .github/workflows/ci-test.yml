@@ -24,6 +24,7 @@ jobs:
           cache: npm
           cache-dependency-path: tc33-builder-pro/package-lock.json
       - run: npm ci
+      - run: node node_modules/electron/install.js
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
