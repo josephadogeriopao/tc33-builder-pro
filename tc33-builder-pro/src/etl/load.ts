@@ -1,5 +1,4 @@
 import ExcelJS from 'exceljs'
-import log from 'electron-log/renderer'
 import { AssessmentReport, AssessmentValues } from '../renderer/src/types/tc33'
 
 export interface WorkbookHeaderOptions {
@@ -11,7 +10,7 @@ export async function buildTc33Workbook(
   report: AssessmentReport,
   outputFileName = 'tc33.xlsx',
   headerOptions?: WorkbookHeaderOptions
-): Promise<void> {
+): Promise<Uint8Array> {
   // Resolve from user input or SQL-parsed metadata (no hardcoded defaults)
   const district = (headerOptions?.district ?? report.district ?? '').trim()
   const taxYear = (headerOptions?.taxYear ?? report.taxYear ?? '').trim()
@@ -22,8 +21,6 @@ export async function buildTc33Workbook(
     if (!taxYear) missing.push('Tax Year')
     throw new Error(`Missing required report metadata: ${missing.join(' and ')}. Please enter them before exporting.`)
   }
-
-  log.info(`Building TC33 workbook for District ${district}, Tax Year ${taxYear}... (Total groups: ${report.groups.size})`)
 
   const workbook = new ExcelJS.Workbook()
   const worksheet = workbook.addWorksheet('TC33 Report', {
@@ -233,17 +230,5 @@ export async function buildTc33Workbook(
 
   // 6. Generate Buffer and Download tc33.xlsx
   const buffer = await workbook.xlsx.writeBuffer()
-  const blob = new Blob([buffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = outputFileName
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-
-  log.info(`Successfully exported ${outputFileName}`)
+  return new Uint8Array(buffer)
 }

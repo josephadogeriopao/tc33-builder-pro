@@ -5,7 +5,7 @@ import {
   PropertyGroup,
   PsrJsonPayload
 } from '../renderer/src/types/tc33'
-import { CellValue, SheetRow } from '../shared/types'
+import { CellValue, JsonMetadata, SheetRow } from '../shared/types'
 
 export interface TransformResult {
   isValid: boolean
@@ -260,6 +260,26 @@ export function transform(extractedRows: SheetRow[], sqlScript?: string): Transf
   }
 }
 
+export function extractPsrMetadata(payload: unknown): JsonMetadata {
+  if (!payload || typeof payload !== 'object') return {}
+  const psr = (payload as { PSR?: unknown }).PSR
+  if (!psr || typeof psr !== 'object') return {}
+  const parishInformation = (psr as { ParishInformation?: unknown }).ParishInformation
+  if (!Array.isArray(parishInformation) || !parishInformation.length) return {}
+  const parish = parishInformation[0] as Record<string, unknown>
+  const rawFips = parish.ParishFipsCode
+  const fipsCode = typeof rawFips === 'string' || typeof rawFips === 'number' ? String(rawFips).trim() : ''
+  const rawTaxYear = parish.TaxYear
+  const taxYear = typeof rawTaxYear === 'string' || typeof rawTaxYear === 'number' ? String(rawTaxYear).trim() : ''
+  const rawParishName = parish.ParishName
+  const parishName = typeof rawParishName === 'string' ? rawParishName.trim() : ''
+  return {
+    ...(parishName ? { parishName } : {}),
+    ...(fipsCode ? { fipsCode, district: fipsCode.slice(-1) } : {}),
+    ...(taxYear ? { taxYear } : {})
+  }
+}
+
 function mapClassToGroupCode(classCode: string): string {
   const num = Number(classCode)
   if (num >= 30 && num <= 49) return '1' // Real Estate
@@ -271,12 +291,10 @@ function mapClassToGroupCode(classCode: string): string {
 
 export function mapPsrJsonToAssessmentReport(payload: PsrJsonPayload): AssessmentReport {
   const groups = new Map<string, PropertyGroup>()
-  const parish = payload.PSR?.ParishInformation?.[0]
+  const safePayload = payload && typeof payload === 'object' ? payload : { PSR: {} }
+  const metadata = extractPsrMetadata(safePayload)
 
-  const district = parish?.ParishFipsCode ? parish.ParishFipsCode.slice(-1) : undefined
-  const taxYear = parish?.TaxYear ? String(parish.TaxYear) : undefined
-
-  for (const item of payload.PSR?.ActiveRecap ?? []) {
+  for (const item of safePayload.PSR?.ActiveRecap ?? []) {
     const groupCode = mapClassToGroupCode(item.Class)
     if (!groupCode) continue
 
@@ -312,7 +330,7 @@ export function mapPsrJsonToAssessmentReport(payload: PsrJsonPayload): Assessmen
   return {
     groups,
     summaryRows: {},
-    district,
-    taxYear
+    district: metadata.district,
+    taxYear: metadata.taxYear
   }
 }
