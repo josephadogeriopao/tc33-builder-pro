@@ -1,0 +1,39 @@
+name: Test desktop starter
+on:
+  push:
+    branches: [main, 'feat/**']
+    paths: ['app/**', '.github/workflows/**']
+  pull_request:
+    paths: ['app/**', '.github/workflows/**']
+permissions:
+  contents: read
+concurrency:
+  group: desktop-tests-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: node scripts/check-lock.cjs
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-failure-report
+          path: |
+            app/playwright-report
+            app/test-results
