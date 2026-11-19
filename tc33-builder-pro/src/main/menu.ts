@@ -32,11 +32,11 @@ export function registerAppMenu(mainWindow: BrowserWindow): void {
     {
       label: 'File',
       submenu: [
-        { label: 'New', accelerator: 'CmdOrCtrl+N', click: () => sendCommand('new') },
-        { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => sendCommand('open') },
+        { label: 'Import Excel / JSON…', accelerator: 'CmdOrCtrl+O', click: () => sendCommand('open') },
+        { label: 'Validate batch', click: () => sendCommand('validate') },
         { type: 'separator' },
-        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => sendCommand('save') },
-        { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendCommand('save-as') },
+        { label: 'Generate TC-33 workbook(s)', accelerator: 'CmdOrCtrl+Shift+G', click: () => sendCommand('generate') },
+        { label: 'Preferences…', accelerator: 'CmdOrCtrl+,', click: () => sendCommand('preferences') },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' }
       ]
@@ -62,7 +62,7 @@ export function registerAppMenu(mainWindow: BrowserWindow): void {
               { role: 'selectAll' as const }
             ]),
         { type: 'separator' },
-        { label: 'Find', accelerator: 'CmdOrCtrl+F', click: () => sendCommand('find') }
+        { label: 'Command palette', accelerator: 'CmdOrCtrl+K', click: () => sendCommand('palette') }
       ]
     },
     {

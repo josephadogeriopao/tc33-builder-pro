@@ -3,7 +3,8 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { is } from '@electron-toolkit/utils'
 import { safeExternalURL } from '../shared/validation'
-import { getWindowState, saveWindowState } from './settings'
+import { getWindowState, saveWindowState, getPreferences } from './settings'
+import { hasTray, isQuitting } from './desktop'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -27,7 +28,12 @@ export function createMainWindow(): BrowserWindow {
     ...(visible ? { x: saved.x, y: saved.y } : {}),
     minWidth: 600,
     minHeight: 500,
+    maxWidth: Math.round(screenWidth / 1.5),
+    maxHeight: screenHeight,
     show: false,
+    frame: false,
+    title: 'TC33 Builder Pro',
+    backgroundColor: '#182c40',
     icon: appIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -38,7 +44,38 @@ export function createMainWindow(): BrowserWindow {
   })
 
   if (saved.maximized) mainWindow.maximize()
-  mainWindow.once('ready-to-show', () => mainWindow.show())
+  const splash = new BrowserWindow({
+    width: 420, height: 260, frame: false, resizable: false, show: false,
+    backgroundColor: '#182c40',
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
+  })
+  const splashStartedAt = Date.now()
+  let revealRequested = false
+  let revealDelay: ReturnType<typeof setTimeout> | undefined
+  void splash.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(
+    '<!doctype html><html lang="en"><title>Starting TC33</title><body style="background:#182c40;color:#fff;font:20px system-ui;text-align:center;padding:60px 10px"><h1 style="color:#ffb45e">TC33 Builder Pro</h1><p role="status">Opening your workspace…</p></body></html>'
+  ))
+  splash.once('ready-to-show', () => { if (!splash.isDestroyed()) splash.show() })
+  const showMainWindow = () => {
+    clearTimeout(timeout)
+    if (!splash.isDestroyed()) splash.destroy()
+    if (!mainWindow.isDestroyed()) mainWindow.show()
+  }
+  const reveal = () => {
+    if (revealRequested) return
+    revealRequested = true
+    const remaining = Math.max(0, 2500 - (Date.now() - splashStartedAt))
+    if (remaining) revealDelay = setTimeout(showMainWindow, remaining)
+    else showMainWindow()
+  }
+  const timeout = setTimeout(reveal, 8000)
+  mainWindow.once('ready-to-show', reveal)
+  mainWindow.once('closed', () => {
+    clearTimeout(timeout)
+    if (revealDelay) clearTimeout(revealDelay)
+    if (!splash.isDestroyed()) splash.destroy()
+  })
+  mainWindow.webContents.once('did-fail-load', reveal)
   mainWindow.webContents.on('render-process-gone', () => {
     if (mainWindow.isDestroyed()) return
     void dialog.showMessageBox(mainWindow, {
@@ -52,8 +89,15 @@ export function createMainWindow(): BrowserWindow {
       else mainWindow.close()
     }).catch(() => {})
   })
-  mainWindow.on('close', () => {
+  mainWindow.on('close', (event) => {
     saveWindowState({ ...mainWindow.getNormalBounds(), maximized: mainWindow.isMaximized() })
+    if (!isQuitting() && getPreferences().minimizeToTray && hasTray()) {
+      event.preventDefault()
+      mainWindow.hide()
+    }
+  })
+  mainWindow.on('minimize', () => {
+    if (getPreferences().minimizeToTray && hasTray()) mainWindow.hide()
   })
 
   const openExternal = (value: string) => {
