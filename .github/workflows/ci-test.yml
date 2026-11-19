@@ -2,9 +2,9 @@ name: Test desktop starter
 on:
   push:
     branches: [main, 'feat/**']
-    paths: ['app/**', '.github/workflows/**']
+    paths: ['tc33-builder-pro/**', '.github/workflows/**']
   pull_request:
-    paths: ['app/**', '.github/workflows/**']
+    paths: ['tc33-builder-pro/**', '.github/workflows/**']
 permissions:
   contents: read
 concurrency:
@@ -15,14 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: app
+        working-directory: tc33-builder-pro
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: app/package-lock.json
+          cache-dependency-path: tc33-builder-pro/package-lock.json
       - run: node scripts/check-lock.cjs
       - run: npm ci
       - run: npm run typecheck
@@ -35,5 +35,5 @@ jobs:
         with:
           name: playwright-failure-report
           path: |
-            app/playwright-report
-            app/test-results
+            tc33-builder-pro/playwright-report
+            tc33-builder-pro/test-results
