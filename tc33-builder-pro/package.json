@@ -9,36 +9,47 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "build:win": "npm run build && electron-builder --win"
+    "build:portable": "npm run build && electron-builder --win dir",
+    "build:installer": "npm run build && electron-builder --win nsis",
+    "build:win": "npm run build && electron-builder --win",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:ui": "playwright test",
+    "dev:web": "vite --config vite.web.config.ts"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
+    "docx": "^9.5.1",
     "electron-log": "^5.4.0",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.8.11",
     "exceljs": "^4.4.0",
-    "file-saver": "^2.0.5",
+    "framer-motion": "^12.43.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.9",
     "react-csv": "^2.2.2",
     "react-drag-drop-files": "^3.1.0",
     "react-router-dom": "^7.18.5",
-    "xlsx": "^0.18.5",
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/file-saver": "^2.0.7",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-csv": "^1.1.10",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.6.2",
     "electron": "^35.7.5",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.0.12",
     "electron-vite": "^3.0.0",
+    "postcss": "^8.5.33",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "tailwindcss": "^3.4.19",
+    "tsx": "^4.20.6",
     "typescript": "^5.7.2",
     "vite": "^6.0.0"
   },
@@ -46,11 +57,13 @@
     "appId": "com.josephadogeri.electronapp",
     "productName": "TC33 Builder Pro",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "resources"
     },
     "files": [
       "out/**/*",
-      "package.json"
+      "package.json",
+      "resources/**/*"
     ],
     "win": {
       "target": [
