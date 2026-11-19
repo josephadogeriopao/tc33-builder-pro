@@ -1,6 +1,12 @@
+
+
 # TC33 Builder Pro
 
 A local-first TypeScript desktop application built with Electron, Vite, and React for generating TC-33 recap workbooks and validating source spreadsheets against PSR JSON data.
+
+- **Author:** Joseph Adogeri (<joseph.adogeri@orleansassessors.com>)
+- **Version:** `1.0.0`
+- **Since:** November 2026
 
 ## Quick start
 
@@ -42,6 +48,7 @@ Run inside `tc33-builder-pro/`.
 
 Before the first UI test run, install Playwright's browser binary with `npx playwright install chromium` (on Linux CI, use `npx playwright install --with-deps chromium`).
 
+
 ## Packaging and updates
 
 1. Verify `appId`, `productName`, icons (`resources/icon.ico`), and version in `tc33-builder-pro/package.json`.
@@ -49,9 +56,26 @@ Before the first UI test run, install Playwright's browser binary with `npx play
 3. Run `npm run build:win` to produce the Windows NSIS installer and `win-unpacked` portable directory in `tc33-builder-pro/dist/`.
 4. Default Windows artifacts are built with `signAndEditExecutable: false` (unsigned). Test installers on target Windows machines before distributing.
 
+## Documentation 
+
 ## Documentation
 
 See [SECURITY.md](SECURITY.md) for local data handling, sandboxing, and vulnerability reporting, and [AUTHORS.md](AUTHORS.md) for maintainer information.
+
+Place project documentation and screenshot assets in the following repository paths:
+
+- **Changelog:** [`CHANGELOG.md`](./CHANGELOG.md) (root)
+- **Security Policy:** [`SECURITY.md`](./SECURITY.md) (root)
+- **Authors:** [`AUTHORS.md`](./AUTHORS.md) (root)
+- **Additional Guides:** [`docs/`](./docs/)
+
+## Screenshots
+
+- **Screenshots:** [`docs/screenshots/`](./docs/screenshots/)
+  - `docs/screenshots/overview-workspace.png`
+  - `docs/screenshots/validation-report.png`
+  - `docs/screenshots/recent-activity.png`
+  - `docs/screenshots/preferences-dark.png`
 
 ## Licensing
 
