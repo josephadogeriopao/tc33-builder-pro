@@ -20,6 +20,8 @@
     "src/renderer/src/**/*",
     "src/renderer/src/**/*.tsx",
     "src/preload/*.d.ts",
+    "src/preload/*.ts",
+    "src/main/**/*.ts",
     "src/etl/*.ts",
     "src/shared/*.ts",
     "src/utils/*.ts"
