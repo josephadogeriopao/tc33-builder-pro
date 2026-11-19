@@ -97,14 +97,16 @@ test('removes one recent-file entry without deleting its source', async ({ page 
   await expect(page.getByText('source.xlsx')).toBeVisible()
   const actions = page.locator('.recent-actions')
   await expect(actions).toHaveCSS('flex-direction', 'row')
-  await page.getByRole('button', { name: 'Reload source.xlsx from disk' }).click()
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('recentReloadPath'))).toBe('/mock/source.xlsx')
-  await expect(page.getByText('source.xlsx')).toBeVisible()
+  await page.getByRole('button', { name: 'Reopen source.xlsx from disk' }).click()
+  await expect(page.getByRole('tabpanel', { name: 'Run log' })).toContainText('Reopened source.xlsx.')
+  await page.getByRole('button', { name: /Recent & activity/i }).click()
+  await expect(page.locator('.source-list').getByText('source.xlsx', { exact: true })).toBeVisible()
   const removeButton = page.getByRole('button', { name: 'Remove source.xlsx from recent files' })
   const childOrder = await removeButton.evaluate((button) => Array.from(button.childNodes).map((node) => node.nodeType === Node.TEXT_NODE ? 'text' : (node as Element).tagName.toLowerCase()))
   expect(childOrder).toEqual(['text', 'svg'])
   await removeButton.click()
   await expect(page.getByText('No recent files yet.')).toBeVisible()
+
 })
 
 test('sidebar offers a smooth return to its top after it overflows', async ({ page }) => {
